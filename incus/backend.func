@@ -1124,13 +1124,16 @@ INNEREOF" >>"${LOGFILE:-$INCUS_BUILD_LOG}" 2>&1 || { msg_error "Failed to push f
   # keeps the view and the keyboard: input reaches the install through a fifo
   # for as long as there is a console, and once there is none the reads return
   # EOF and the prompts take their defaults.
+  # The watcher also stops when the install's process is gone: one killed by the
+  # kernel writes neither marker, and the console would wait on it forever.
   local _base="/root/.install-${SESSION_ID}"
   local _runner _watcher _body
   _runner='setsid bash "$1".sh <"$1".in >>"$1".out 2>&1 &
 echo $! >"$1".pid'
   _watcher='tail -n +1 -f "$1".out &
 _tp=$!
-while [ ! -f "$1".done ] && [ ! -f "$1".failed ]; do sleep 2; done
+_ip=$(cat "$1".pid 2>/dev/null)
+while [ ! -f "$1".done ] && [ ! -f "$1".failed ] && kill -0 "$_ip" 2>/dev/null; do sleep 2; done
 sleep 1
 kill $_tp 2>/dev/null'
   # The trailing touch is a completion sentinel: no install script exits early.

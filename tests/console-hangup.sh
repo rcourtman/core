@@ -131,6 +131,28 @@ out="$(_pve_wait_for_detached_install)"
 expect "a container that stopped by itself is still unreported" 199 "$?"
 kill "$worker" 2>/dev/null
 
+# The Incus watcher: it follows the install's output until a marker appears or
+# its process is gone, because a killed install writes neither marker.
+sed -n "/^  _watcher='/,/^kill \$_tp/p" "$CORE_DIR/incus/backend.func" |
+  sed "1s/^  _watcher='//; \$s/'\$//" >"$TEST_DIR/watcher"
+WATCH="$TEST_DIR/watch"
+: >"$WATCH.out"
+watch_rc() { timeout "$1" bash "$TEST_DIR/watcher" "$WATCH" >/dev/null 2>&1; echo "$?"; }
+
+sleep 30 &
+worker=$!
+echo "$worker" >"$WATCH.pid"
+expect "the watcher stays while the install runs" 124 "$(watch_rc 3)"
+: >"$WATCH.done"
+expect "a .done marker ends the watcher" 0 "$(watch_rc 10)"
+rm -f "$WATCH.done"
+: >"$WATCH.failed"
+expect "a .failed marker ends the watcher" 0 "$(watch_rc 10)"
+rm -f "$WATCH.failed"
+kill -9 "$worker" 2>/dev/null
+wait "$worker" 2>/dev/null
+expect "an install killed without a marker ends the watcher" 0 "$(watch_rc 10)"
+
 # _pve_ct_gone_during_setup(): a setup step failed; was the container still there?
 msg_warn() { echo "warn: $*"; }
 msg_error() { echo "error: $*"; }
